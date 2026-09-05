@@ -86,6 +86,11 @@ router.route("/skip-order/:id").patch(
   UserTakeServiceController.skipOrder
 );
 
+router.route("/reassign-order/:id/:artistId").patch(
+  auth(USER_ROLES.ADMIN, USER_ROLES.SUPER_ADMIN),
+  UserTakeServiceController.reassignOrder
+);
+
 
 
 export const UserTakeServiceRoutes = router;

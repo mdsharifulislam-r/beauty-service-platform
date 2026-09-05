@@ -35,9 +35,7 @@ import { INotification } from "../notification/notification.interface";
 import { getEstimatedArrivalTime } from "../../../helpers/timeAndDistanceCalculator";
 import dayjs from "dayjs";
 import utc from "dayjs/plugin/utc";
-import { IPlan } from "../plan/plan.interface";
 import { compareDatesInHours } from "../../../shared/timeComparator";
-import { log } from "winston";
 import { IServiceManagement } from "../servicemanagement/servicemanagement.interface";
 
 dayjs.extend(utc);
@@ -821,6 +819,18 @@ const cancelOrder = async (
 
   if (["completed", "cancelled"].includes(order.status)) {
     throw new ApiError(StatusCodes.BAD_REQUEST, "Order is not cancellable");
+  }
+
+
+  if([USER_ROLES.SUPER_ADMIN,USER_ROLES.ADMIN].includes(user.role)){
+    await UserTakeService.updateOne(
+      { _id: orderId },
+      {
+        status: "cancelled",
+        reason: resion,
+      }
+    );
+    return;
   }
 
   if (order.specficOrder){
@@ -1874,7 +1884,93 @@ const skipOrderIntoDB = async (id: string,user:JwtPayload) => {
 
 
 
+const reAssignOtherArtist = async (
+  id: string,
+  user: JwtPayload
+): Promise<IUserTakeService | null> => {
+  const isExist = await UserTakeService.findOne({ _id: id });
+  if (!isExist) {
+    throw new ApiError(StatusCodes.NOT_FOUND, "Service not found");
+  }
+  const userData = await User.findById(user.id);
+  const currentDate = new Date();
 
+  if (userData?.status == "deleted") {
+    throw new ApiError(StatusCodes.FORBIDDEN, "you account is inactive");
+  }
+
+  const plan = await Plan.findOne({for:USER_ROLES.ARTIST}).lean()
+
+  const artist_app_fee = (isExist?.price * ((plan?.price_offer??10) / 100))
+  
+
+  const result: any = await UserTakeService.findOneAndUpdate(
+    { _id: id },
+    { artiestId: user.id, artist_book_date: new Date(), isBooked: true,artist_app_fee: artist_app_fee,artist_totalPrice: Number((isExist?.price - artist_app_fee).toFixed(2)) },
+    { new: true }
+  ).populate("serviceId");
+
+  if (!result) {
+    throw new ApiError(StatusCodes.NOT_FOUND, "UserTakeService not found!");
+  }
+  const findUser = await User.findById(user.id);
+  if (!findUser) {
+    throw new ApiError(StatusCodes.NOT_FOUND, "User not found!");
+  }
+
+  const customer = await User.findById(isExist?.userId);
+  if (!customer) {
+    throw new ApiError(StatusCodes.NOT_FOUND, "Customer not found!");
+  }
+  if (customer?.deviceToken) {
+    const notificationPayload: INotification = {
+      title: `Admin reassign your order to ${findUser?.name}`,
+      message: `Your request for ${result?.serviceId?.name} has been reassigned to ${findUser?.name} by admin`,
+      filePath: "booking",
+      isRead: false,
+      userId: customer?._id,
+    };
+    await sendNotificationToFCM({
+      body: `Your request for ${result?.serviceId?.name} has been reassigned to ${findUser?.name} by admin`,
+      title: `Admin reassign your order to ${findUser?.name}`,
+      token: customer?.deviceToken,
+      data: notificationPayload,
+    });
+  }
+
+  await sendNotifications({
+    receiver: [isExist?.userId!],
+    title: `Admin assing you for ${result?.serviceId?.name} to ${customer?.name}`,
+    message: "Your request for " + result?.serviceId?.name + " has been assigned to you by admin",
+    filePath: "booking",
+    serviceId: result._id,
+    isRead: false,
+  });
+
+  const allProviders = await User.find({
+    role: USER_ROLES.ARTIST,
+    isActive: true,
+  });
+  // // 📍 Filter by 5km radius
+  const nearbyProviders = allProviders.filter((provider) => {
+    if (provider.latitude && provider.longitude) {
+      const distance = calculateDistanceInKm(
+        result.latitude,
+        result.longitude,
+        provider.latitude,
+        Number(provider.longitude)
+      );
+
+      return distance <= 50;
+    }
+  });
+
+  for (const provider of nearbyProviders) {
+    locationRemover({ receiver: provider._id, data: id });
+  }
+
+  return result;
+};
   
 
 
@@ -1896,5 +1992,6 @@ export const UserTakeServiceServices = {
   artistOnTheWayStatus,
   startOrderService,
   createOrderToSpecificArtist,
-  skipOrderIntoDB
+  skipOrderIntoDB,
+  reAssignOtherArtist
 };

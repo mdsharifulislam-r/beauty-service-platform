@@ -180,6 +180,19 @@ const skipOrder = catchAsync(async (req: Request, res: Response) => {
   });
 });
 
+
+
+const reassignOrder = catchAsync(async (req: Request, res: Response) => {
+  const { id,artistId} = req.params;
+  const result = await UserTakeServiceServices.reAssignOtherArtist(id,{id:artistId});
+  sendResponse(res, {
+    statusCode: 200,
+    success: true,
+    message: "UserTakeService updated successfully",
+    data: result,
+  });
+});
+
 export const UserTakeServiceController = {
   createUserTakeService,
   getSingleService,
@@ -193,5 +206,6 @@ export const UserTakeServiceController = {
   changeArtistOntheWay,
   startOrderService,
   createOrderToSpecificArtist,
-  skipOrder
+  skipOrder,
+  reassignOrder
 };
