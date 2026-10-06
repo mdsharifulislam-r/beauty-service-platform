@@ -270,7 +270,7 @@ const getUserDataUsingIdFromDB = async (id:string,query: Record<string, any>) =>
     throw new ApiError(StatusCodes.BAD_REQUEST, "User doesn't exist!");
   }
   const userRecentOrder = new QueryBuilder(
-    UserTakeService.find({userId:id,status:'completed'}),
+    UserTakeService.find({$or:[{artiestId:id},{userId:id}]}).limit(5),
     query
   ).sort().paginate()
   const userRecentOrderData = await userRecentOrder.modelQuery.populate([{
