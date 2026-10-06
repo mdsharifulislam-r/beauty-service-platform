@@ -261,7 +261,10 @@ const getUserDataUsingIdFromDB = async (id:string,query: Record<string, any>) =>
     populate:{
       path:"package",
     }
-  }])
+  },
+{
+  path:"categories"
+}])
   .lean();
   if(!user){
     throw new ApiError(StatusCodes.BAD_REQUEST, "User doesn't exist!");
